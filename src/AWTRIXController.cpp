@@ -16,11 +16,20 @@
 #include <DFPlayerMini_Fast.h>
 #include "awtrix-conf.h"
 #include <WiFiManager.h>
+#include <DoubleResetDetect.h>
+
 
 String version = "0.9b"; 
 char awtrix_server[40];
 WiFiClient espClient;
 PubSubClient client(espClient);
+
+//resetdetector
+#define DRD_TIMEOUT 2.0
+#define DRD_ADDRESS 0x00
+DoubleResetDetect drd(DRD_TIMEOUT, DRD_ADDRESS);
+
+
 
 bool firstStart = true;
 int myTime;
@@ -553,6 +562,13 @@ void setup(){
   	wifiManager.setAPCallback(configModeCallback);
 	wifiManager.setSaveConfigCallback(saveConfigCallback);
 	wifiManager.addParameter(&custom_server_ip);
+
+ if (drd.detect())
+    {
+        Serial.println("** Double reset boot **");
+        wifiManager.resetSettings();
+    }
+
 	matrix->begin();
 	matrix->setTextWrap(false);
 	matrix->setBrightness(80);
