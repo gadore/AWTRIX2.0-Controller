@@ -1,14 +1,5 @@
 ///////////////////////// AWTRIX CONFIG /////////////////////////
 
-// Wifi Config
-
-typedef struct {
-    const char *ssid = "Kindergarten";
-    const char *password = "53825382";
-    char *awtrix_server = "192.168.178.39";
-} configData_t;
-
-configData_t wifiConfig;
 
 
 bool usbWifi = false; // true = usb...

@@ -1,10 +1,9 @@
+#include <FS.h>
 #include <ArduinoOTA.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>     // Replace with WebServer.h for ESP32
-#include <AutoConnect.h>
 #include <WiFiClient.h>
 #include <PubSubClient.h>
-#include <FS.h>
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
 #include <FastLED.h>
@@ -17,25 +16,26 @@
 #include <DFPlayerMini_Fast.h>
 #include "awtrix-conf.h"
 #include <WiFiManager.h>
-#include <WiFiUdp.h>
 
 String version = "0.9b"; 
-
+char awtrix_server[40];
 WiFiClient espClient;
 PubSubClient client(espClient);
-
-//UDP Settings:
-WiFiUDP Udp;
-unsigned int localUdpPort = 7005;
-char packetBuffer[6];
 
 bool firstStart = true;
 int myTime;
 int myCounter;
+int TIME_FOR_SEARCHING_WIFI = 1;
 
 //USB Connection:
 byte myBytes[1000];
 unsigned int bufferpointer;
+
+//Zum speichern...
+int cfgStart = 0;
+
+//flag for saving data
+bool shouldSaveConfig = false;
 
 LightDependentResistor photocell(LDR_PIN, LDR_RESISTOR, LDR_PHOTOCELL);
 #define APDS9960_INT    D6
@@ -62,12 +62,12 @@ CRGB leds[256];
 #endif
 
 //Hotspot
-ESP8266WebServer Server;
-AutoConnect      Portal(Server);
+//ESP8266WebServer Server;
+//AutoConnect      Portal(Server);
 
 static byte c1;  // Last character buffer
 byte utf8ascii(byte ascii) {
-	if ( ascii < 128 ) // Standard ASCII-set 0..0x7F handling
+	if ( ascii < 128 ) // Standard ASCII-set 0..0x7F handling 
 	{ c1 = 0;
 		return ( ascii );
 	}
@@ -92,8 +92,7 @@ void debuggingWithMatrix(String text){
 String utf8ascii(String s) {
   String r = "";
   char c;
-  for (int i = 0; i < s.length(); i++)
-  {
+  for (int i = 0; i < s.length(); i++){
     c = utf8ascii(s.charAt(i));
     if (c != 0) r += c;
   }
@@ -405,9 +404,9 @@ void updateMatrix(byte payload[],int length){
 			break;
 		}
 		case 13:{
-			matrix->setBrightness(payload[1]);
+  			matrix->setBrightness(payload[1]);
 			break;
-		}
+  		}
 	}
 }
 
@@ -428,13 +427,6 @@ void reconnect(){
 			}
 		}
 	}
-}
-
-
-
-void processing(byte payload[],int length)
-{
-	
 }
 
 void ICACHE_RAM_ATTR interruptRoutine() {
@@ -504,9 +496,63 @@ void flashProgress(unsigned int progress, unsigned int total) {
     matrix->show();
 }
 
+void saveConfigCallback () {
+  Serial.println("Should save config");
+  shouldSaveConfig = true;
+}
 
-void setup()
-{
+void configModeCallback (WiFiManager *myWiFiManager) {
+	Serial.println("Entered config mode");
+	Serial.println(WiFi.softAPIP());
+	//if you used auto generated SSID, print it
+	Serial.println(myWiFiManager->getConfigPortalSSID());
+	matrix->clear();
+	matrix->setCursor(3, 6);
+	matrix->print("Hotspot");
+	matrix->show();
+}
+
+void setup(){
+	Serial.begin(115200);
+	
+
+ Serial.println("mounting FS...");
+
+  if (SPIFFS.begin()) {
+    Serial.println("mounted file system");
+    if (SPIFFS.exists("/config.json")) {
+      //file exists, reading and loading
+      Serial.println("reading config file");
+      File configFile = SPIFFS.open("/config.json", "r");
+      if (configFile) {
+        Serial.println("opened config file");
+        size_t size = configFile.size();
+        // Allocate a buffer to store contents of the file.
+        std::unique_ptr<char[]> buf(new char[size]);
+
+        configFile.readBytes(buf.get(), size);
+        DynamicJsonBuffer jsonBuffer;
+        JsonObject& json = jsonBuffer.parseObject(buf.get());
+        json.printTo(Serial);
+        if (json.success()) {
+          Serial.println("\nparsed json");
+          strcpy(awtrix_server, json["awtrix_server"]);
+        } else {
+          Serial.println("failed to load json config");
+        }
+        configFile.close();
+      }
+    }
+  } else {
+    Serial.println("failed to mount FS");
+  }
+
+	//Extra parameter for configuration the Awtrix-Client
+	WiFiManagerParameter custom_server_ip("server", "awtrix_server", awtrix_server, 20);
+	WiFiManager wifiManager;
+  	wifiManager.setAPCallback(configModeCallback);
+	wifiManager.setSaveConfigCallback(saveConfigCallback);
+	wifiManager.addParameter(&custom_server_ip);
 	matrix->begin();
 	matrix->setTextWrap(false);
 	matrix->setBrightness(80);
@@ -515,49 +561,32 @@ void setup()
 	mySoftwareSerial.begin(9600);
 	FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
 	
-	if(usbWifi)
-		Serial.begin(115200);
-	else {
-		Serial.begin(9600);
-		Serial.println("Hey, I´m your Awtrix!\n");
-		WiFi.mode(WIFI_STA);
-		WiFi.begin(wifiConfig.ssid, wifiConfig.password);
-		int wifiTimeout = millis();
-		while (WiFi.status() != WL_CONNECTED){
-			hardwareAnimatedSearch(0,24,0);
+	wifiManager.autoConnect("AwtrixWiFiSetup2","awtrixxx");
 
-			if(millis()-wifiTimeout>10000){
-				matrix->clear();
-				matrix->setCursor(3, 6);
-				matrix->print("Hotspot");
-				matrix->show();
+	strcpy(awtrix_server, custom_server_ip.getValue());
+	Serial.printf("Stored ServerIP: %s\n",awtrix_server);
+		if(shouldSaveConfig){
+			Serial.println("saving config");
+			DynamicJsonBuffer jsonBuffer;
+			JsonObject& json = jsonBuffer.createObject();
+			json["awtrix_server"] = awtrix_server;
+			//json["mqtt_port"] = mqtt_port;
+			//json["blynk_token"] = blynk_token;
 
-				AutoConnectConfig  Config;
-				Config.title = "Awtrix Setup";
-				Config.apid = "AwtrixSetup";
-				Config.psk = "awtrixxx";
-				Config.apip = IPAddress(8,8,8,8);
-				ACText(header,"Awtrix Setup");
-				ACText(caption1,"Bla");
-				//ACCheckbox("myCheckbox","myCheckbox","Hallo Welt",true);
-				
-
-				Portal.config(Config);
-
-				Portal.begin();
-				while (WiFi.status() != WL_CONNECTED)
-				{	
-					Portal.handleClient();
-
-				}
-				//wifiManager.autoConnect("AwtrixWiFiSetup");
+			File configFile = SPIFFS.open("/config.json", "w");
+			if (!configFile) {
+				Serial.println("failed to open config file for writing");
 			}
+			json.printTo(Serial);
+			json.printTo(configFile);
+			configFile.close();
+
 		}
 		hardwareAnimatedCheck(0,27,2);
 
-		client.setServer(wifiConfig.awtrix_server, 7001);
+		client.setServer(awtrix_server, 7001);
 		client.setCallback(callback);
-	}
+	
 
 	photocell.setPhotocellPositionOnGround(false);
 
