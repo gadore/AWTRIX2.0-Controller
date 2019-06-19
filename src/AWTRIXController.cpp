@@ -25,7 +25,7 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 //resetdetector
-#define DRD_TIMEOUT 2.0
+#define DRD_TIMEOUT 1.0
 #define DRD_ADDRESS 0x00
 DoubleResetDetect drd(DRD_TIMEOUT, DRD_ADDRESS);
 
@@ -165,7 +165,7 @@ void hardwareAnimatedSearchFast(int rounds,int x,int y){
 			matrix->drawPixel(x-1,y+2,0xFFFF);
 			matrix->drawPixel(x,y+3,0xFFFF);
 			matrix->drawPixel(x-1,y+4,0xFFFF);
-			case 1: 
+		case 1: 
 			matrix->drawPixel(x-3,y+3,0xFFFF);
 		case 0: 
 		break;	
@@ -219,11 +219,6 @@ void utf8ascii(char* s) {
   s[k] = 0;
 }
 
-
-String GetChipID(){
-	return String(ESP.getChipId());
-}
-
 int GetRSSIasQuality(int rssi){
 	int quality = 0;
 
@@ -253,7 +248,7 @@ void updateMatrix(byte payload[],int length){
 		hardwareAnimatedCheck(1,30,2);
 		firstStart=false;
 	}
-
+	Serial.println(payload[0]);
 	switch(payload[0]){
 		case 0:{
 			//Command 0: DrawText
@@ -268,7 +263,6 @@ void updateMatrix(byte payload[],int length){
 			matrix->setTextColor(matrix->Color(payload[5],payload[6],payload[7]));
 		
 			String myText = "";
-			char myChar;
 			for(int i = 8;i<length;i++){
 				char c = payload[i];
 				myText += c;
@@ -420,7 +414,6 @@ void updateMatrix(byte payload[],int length){
 }
 
 void callback(char *topic, byte *payload, unsigned int length){
-	int y_offset = 5;
 	updateMatrix(payload,length);
 }
 
@@ -500,7 +493,7 @@ void flashProgress(unsigned int progress, unsigned int total) {
         }
     }
     matrix->setCursor(0, 6);
-		matrix->setTextColor(matrix->Color(255, 255, 255));
+	matrix->setTextColor(matrix->Color(255, 255, 255));
     matrix->print("FLASHING");
     matrix->show();
 }
@@ -523,10 +516,7 @@ void configModeCallback (WiFiManager *myWiFiManager) {
 
 void setup(){
 	Serial.begin(115200);
-	
-
- Serial.println("mounting FS...");
-
+ 	Serial.println("mounting FS...");
   if (SPIFFS.begin()) {
     Serial.println("mounted file system");
     if (SPIFFS.exists("/config.json")) {
@@ -562,6 +552,7 @@ void setup(){
   	wifiManager.setAPCallback(configModeCallback);
 	wifiManager.setSaveConfigCallback(saveConfigCallback);
 	wifiManager.addParameter(&custom_server_ip);
+  wifiManager.setCustomHeadElement("<style>html{ background-color: #646567;}</style>");
 
  if (drd.detect())
     {
@@ -576,8 +567,8 @@ void setup(){
 
 	mySoftwareSerial.begin(9600);
 	FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
-	
-	wifiManager.autoConnect("AwtrixWiFiSetup2","awtrixxx");
+	wifiManager.setAPStaticIPConfig(IPAddress(8,8,8,8),IPAddress(192,168,4,1),IPAddress(255,255,255,0));
+	wifiManager.autoConnect("AWTRIX MATRIX","awtrixxx");
 
 	strcpy(awtrix_server, custom_server_ip.getValue());
 	Serial.printf("Stored ServerIP: %s\n",awtrix_server);
@@ -586,9 +577,6 @@ void setup(){
 			DynamicJsonBuffer jsonBuffer;
 			JsonObject& json = jsonBuffer.createObject();
 			json["awtrix_server"] = awtrix_server;
-			//json["mqtt_port"] = mqtt_port;
-			//json["blynk_token"] = blynk_token;
-
 			File configFile = SPIFFS.open("/config.json", "w");
 			if (!configFile) {
 				Serial.println("failed to open config file for writing");
@@ -596,18 +584,12 @@ void setup(){
 			json.printTo(Serial);
 			json.printTo(configFile);
 			configFile.close();
-
 		}
 		hardwareAnimatedCheck(0,27,2);
-
 		client.setServer(awtrix_server, 7001);
 		client.setCallback(callback);
-	
-
 	photocell.setPhotocellPositionOnGround(false);
-
 	myMP3.begin(mySoftwareSerial);
-
 	Wire.begin(APDS9960_SDA,APDS9960_SCL);
   	pinMode(APDS9960_INT, INPUT);
 	attachInterrupt(APDS9960_INT, interruptRoutine, FALLING);
@@ -645,6 +627,7 @@ void loop() {
 			}
 			myTime = millis();
 		}
+		firstStart=false;
 	}
 
  	if (!updating) {
