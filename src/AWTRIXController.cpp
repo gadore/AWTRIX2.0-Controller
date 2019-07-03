@@ -484,7 +484,7 @@ void updateMatrix(byte payload[],int length){
 		hardwareAnimatedCheck(1,30,2);
 		firstStart=false;
 	}
-	Serial.println(payload[0]);
+	//Serial.println(payload[0]);
 	switch(payload[0]){
 		case 0:{
 			//Command 0: DrawText
@@ -616,6 +616,10 @@ void updateMatrix(byte payload[],int length){
 			root["wifiquality"] =GetRSSIasQuality(WiFi.RSSI());
 			root["wifissid"] =WiFi.SSID();
 			root["getIP"] =WiFi.localIP().toString();
+			BMESensor.refresh();
+			root["Temp"] = BMESensor.temperature;
+			root["Hum"] = BMESensor.humidity;
+			root["hPa"] =BMESensor.pressure;
 			String JS;
 			root.printTo(JS);
 			if (WIFI==0){
@@ -757,7 +761,7 @@ void setup(){
     Serial.println("load error");
 
   Serial.print("WiFi ");
-  if (portal.begin()) {
+  if (portal.begin("Kindergarten","53825382",6500)) {
     Serial.println("connected:" + WiFi.SSID());
     Serial.println("IP:" + WiFi.localIP().toString());
 	
@@ -788,7 +792,7 @@ void setup(){
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
 		flashProgress(progress, total);
 	});
-
+ 	BMESensor.begin(); // initalize bme280 sensor
   	ArduinoOTA.begin();
 	matrix->clear();
 	matrix->setCursor(7,6);
