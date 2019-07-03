@@ -30,6 +30,19 @@ https://opensource.org/licenses/MIT
 #define AUX_SETTING_URI "/AWTRIX_setting"
 #define AUX_SAVE_URI    "/awtrix_save"
 
+typedef ESP8266WebServer  WiFiWebServer;
+
+AutoConnect  portal;
+AutoConnectConfig config;
+WiFiClient   wifiClient;
+
+String  serverName;
+bool  LDR;
+bool DFPlayer;
+String  TempSensor; 
+String  WIFI;
+
+
 
 // JSON definition of AutoConnectAux.
 // Multiple AutoConnectAux can be defined in the JSON array.
@@ -166,23 +179,6 @@ static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
 ]
 )raw";
 
-// Adjusting WebServer class with between ESP8266 and ESP32.
-#if defined(ARDUINO_ARCH_ESP8266)
-typedef ESP8266WebServer  WiFiWebServer;
-#elif defined(ARDUINO_ARCH_ESP32)
-typedef WebServer WiFiWebServer;
-#endif
-
-AutoConnect  portal;
-AutoConnectConfig config;
-WiFiClient   wifiClient;
-
-String  serverName;
-String  apid;
-bool  LDR;
-bool DFPlayer;
-String  TempSensor; 
-String  WIFI;
 
 
 void getParams(AutoConnectAux& aux) {
