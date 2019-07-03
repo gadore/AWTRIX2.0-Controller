@@ -739,7 +739,8 @@ void setup(){
 	Serial.begin(115200);
 	config.title= "AWTRIX Controller";
 	config.apid= "AWTRIX Controller";
-	config.apip=IPAddress(8,8,8,8);
+	config.apip=IPAddress(172,168,244,1);
+	config.gateway=IPAddress(172,168,244,1);
  	portal.onDetect(startCP);
 	SPIFFS.begin();
   if (portal.load(FPSTR(AUX_AWTRIX_setting))) {
