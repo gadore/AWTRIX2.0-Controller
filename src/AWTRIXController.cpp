@@ -164,6 +164,7 @@ static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
         "name": "usedTempSensor",
         "type": "ACRadio",
         "value": [
+		  "None"
           "BME280",
 		  "HTU21D"
         ],
@@ -219,7 +220,7 @@ void getParams(AutoConnectAux& aux) {
 	if (usedTempSensor.value() == "BME280"){
 		TempSensor = 1;
 	}
-	else if (usedTempSensor.value() == "BME280"){
+	else if (usedTempSensor.value() == "HTU21D"){
 		TempSensor = 2;
 	}
 	else{
