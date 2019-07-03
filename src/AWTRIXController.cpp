@@ -20,8 +20,6 @@
 
 typedef ESP8266WebServer  WiFiWebServer;
 
-int pingResult;
-
 AutoConnect  portal;
 AutoConnectConfig config;
 WiFiClient   wifiClient;
@@ -43,9 +41,6 @@ bool  LDR;
 bool DFPlayer; 
 int  TempSensor; 
 int  WIFI; 
-
-
-
 
 bool firstStart = true;
 int myTime;
@@ -74,8 +69,6 @@ bool updating = false;
 DFPlayerMini_Fast myMP3;
 
 SoftwareSerial mySoftwareSerial(D7, D5); // RX, TX
-
-//SoftwareSerial mySoftwareSerial(D5, D4); // RX, TX
 
 CRGB leds[256];
 #ifdef MATRIX_MODEV2
@@ -221,8 +214,8 @@ static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
 void getParams(AutoConnectAux& aux) {
   serverName = aux["ServerIP"].value;
   serverName.trim();
-  AutoConnectRadio& usedTempSensor = aux["usedTempSensor"].as<AutoConnectRadio>();
 
+  AutoConnectRadio& usedTempSensor = aux["usedTempSensor"].as<AutoConnectRadio>();
 	if (usedTempSensor.value() == "BME280"){
 		TempSensor = 1;
 	}
@@ -233,16 +226,13 @@ void getParams(AutoConnectAux& aux) {
 		TempSensor = 0;
 	}
 
-
   AutoConnectRadio& WIFIorUSB = aux["WIFIorUSB"].as<AutoConnectRadio>();
-
   	if (WIFIorUSB.value() == "WiFi"){
 		WIFI = 0;
 	}
 	else {
 		WIFI = 1;
 	}
-
 
   LDR = aux["LDR"].as<AutoConnectCheckbox>().checked;
   DFPlayer = aux["DFPlayer"].as<AutoConnectCheckbox>().checked;
@@ -502,8 +492,6 @@ void updateMatrix(byte payload[],int length){
 			uint16_t x_coordinate = int(payload[1]<<8)+int(payload[2]);
 			uint16_t y_coordinate = int(payload[3]<<8)+int(payload[4]);
 
-			//Serial.printf("X: %d - Y: %d\n",x_coordinate,y_coordinate);
-
 			matrix->setCursor(x_coordinate+1, y_coordinate+y_offset);
 			matrix->setTextColor(matrix->Color(payload[5],payload[6],payload[7]));
 		
@@ -512,7 +500,6 @@ void updateMatrix(byte payload[],int length){
 				char c = payload[i];
 				myText += c;
 			}
-			//Serial.printf("Text: %s\n",myText.c_str());
 			matrix->print(utf8ascii(myText));
 			break;
 		}
@@ -742,17 +729,17 @@ bool startCP(IPAddress ip) {
 
 void setup(){
 	delay(1000);
-	//FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
-	//matrix->begin();
-	//matrix->setTextWrap(false);
-	//matrix->setBrightness(80);
-	//matrix->setFont(&TomThumb);
-	//Serial.setRxBufferSize(1024);
+	FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
+	matrix->begin();
+	matrix->setTextWrap(false);
+	matrix->setBrightness(80);
+	matrix->setFont(&TomThumb);
+	Serial.setRxBufferSize(1024);
 	Serial.begin(115200);
 	config.title= "AWTRIX Controller";
 	config.apid= "AWTRIX Controller";
 	config.apip=IPAddress(8,8,8,8);
- 	////portal.onDetect(startCP);
+ 	portal.onDetect(startCP);
 	SPIFFS.begin();
   if (portal.load(FPSTR(AUX_AWTRIX_setting))) {
     AutoConnectAux& AWTRIX_setting = *portal.aux(AUX_SETTING_URI);
@@ -778,21 +765,12 @@ void setup(){
     Serial.println("Needs WiFi connection to start publishing messages");
   }
 
-  WiFiWebServer&  webServer = portal.host();
-  webServer.on("/", handleRoot);
-
-
+ 	WiFiWebServer&  webServer = portal.host();
+ 	webServer.on("/", handleRoot);
 	mySoftwareSerial.begin(9600);
-	
-
-
-	
 	hardwareAnimatedCheck(0,27,2);
-
 	mqttClient.setServer(serverName.c_str(), 7001);
 	mqttClient.setCallback(callback);
-
-
 	photocell.setPhotocellPositionOnGround(false);
 	myMP3.begin(mySoftwareSerial);
 	Wire.begin(APDS9960_SDA,APDS9960_SCL);
@@ -814,7 +792,6 @@ void setup(){
 	matrix->setCursor(7,6);
 
 	bufferpointer=0;
-
 }
 
 void loop() {
