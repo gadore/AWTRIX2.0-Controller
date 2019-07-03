@@ -164,7 +164,7 @@ static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
         "name": "usedTempSensor",
         "type": "ACRadio",
         "value": [
-		  "None"
+		  "None",
           "BME280",
 		  "HTU21D"
         ],
