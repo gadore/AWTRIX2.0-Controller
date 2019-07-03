@@ -16,8 +16,8 @@ WiFiClient   wifiClient;
 String  serverName;
 bool  LDR;
 bool DFPlayer; 
-String  TempSensor; // String "BME280" oder "HTU21D"
-String  WIFI; // String "USB" oder "WiFi"
+int  TempSensor; // String "BME280" oder "HTU21D"
+int  WIFI; // String "USB" oder "WiFi"
 
 
 // JSON definition of AutoConnectAux.
@@ -160,10 +160,27 @@ void getParams(AutoConnectAux& aux) {
   serverName = aux["ServerIP"].value;
   serverName.trim();
   AutoConnectRadio& usedTempSensor = aux["usedTempSensor"].as<AutoConnectRadio>();
-  TempSensor = usedTempSensor.value();
+
+	if (usedTempSensor.value() == "BME280"){
+		TempSensor = 1;
+	}
+	else if (usedTempSensor.value() == "BME280"){
+		TempSensor = 2;
+	}
+	else{
+		TempSensor = 0;
+	}
+
 
   AutoConnectRadio& WIFIorUSB = aux["WIFIorUSB"].as<AutoConnectRadio>();
-  WIFI = WIFIorUSB.value();
+
+  	if (WIFIorUSB.value() == "WiFi"){
+		WIFI = 0;
+	}
+	else {
+		WIFI = 1;
+	}
+
 
   LDR = aux["LDR"].as<AutoConnectCheckbox>().checked;
   DFPlayer = aux["DFPlayer"].as<AutoConnectCheckbox>().checked;
