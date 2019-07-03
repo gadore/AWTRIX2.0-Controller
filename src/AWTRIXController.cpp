@@ -24,13 +24,12 @@ https://opensource.org/licenses/MIT
 #define GET_CHIPID()  ((uint16_t)(ESP.getEfuseMac()>>32))
 #endif
 #include <FS.h>
-#include <PubSubClient.h>
 #include <AutoConnect.h>
 
 #define PARAM_FILE      "/param.json"
 #define AUX_SETTING_URI "/AWTRIX_setting"
 #define AUX_SAVE_URI    "/awtrix_save"
-#define AUX_CLEAR_URI   "/mqtt_clear"
+
 
 // JSON definition of AutoConnectAux.
 // Multiple AutoConnectAux can be defined in the JSON array.
@@ -177,7 +176,7 @@ typedef WebServer WiFiWebServer;
 AutoConnect  portal;
 AutoConnectConfig config;
 WiFiClient   wifiClient;
-PubSubClient mqttClient(wifiClient);
+
 String  serverName;
 String  apid;
 bool  LDR;
