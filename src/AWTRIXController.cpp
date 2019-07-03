@@ -1,28 +1,5 @@
-/*
-ESP8266/ESP32 publish the RSSI as the WiFi signal strength to ThingSpeak channel.
-This example is for explaining how to use the AutoConnect library.
-
-In order to execute this example, the ThingSpeak account is needed. Sing up
-for New User Account and create a New Channel via My Channels.
-For details, please refer to the project page.
-https://hieromon.github.io/AutoConnect/howtoembed.html#used-with-mqtt-as-a-client-application
-
-This example is based on the environment as of March 20, 2018.
-Copyright (c) 2018 Hieromon Ikasamo.
-This software is released under the MIT License.
-https://opensource.org/licenses/MIT
-*/
-
-#if defined(ARDUINO_ARCH_ESP8266)
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#define GET_CHIPID()  (ESP.getChipId())
-#elif defined(ARDUINO_ARCH_ESP32)
-#include <WiFi.h>
-#include <SPIFFS.h>
-#include <HTTPClient.h>
-#define GET_CHIPID()  ((uint16_t)(ESP.getEfuseMac()>>32))
-#endif
 #include <FS.h>
 #include <AutoConnect.h>
 
@@ -38,17 +15,15 @@ WiFiClient   wifiClient;
 
 String  serverName;
 bool  LDR;
-bool DFPlayer;
-String  TempSensor; 
-String  WIFI;
-
+bool DFPlayer; 
+String  TempSensor; // String "BME280" oder "HTU21D"
+String  WIFI; // String "USB" oder "WiFi"
 
 
 // JSON definition of AutoConnectAux.
 // Multiple AutoConnectAux can be defined in the JSON array.
 // In this example, JSON is hard-coded to make it easier to understand
-// the AutoConnectAux API. In practice, it will be an external content
-// which separated from the sketch, as the mqtt_RSSI_FS example shows.
+// the AutoConnectAux API. 
 static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
 [
   {
@@ -301,6 +276,5 @@ void setup() {
 }
 
 void loop() {
-
   portal.handleClient();
 }
