@@ -1,8 +1,9 @@
 #include <FS.h>
 #include <ArduinoOTA.h>
 #include <ESP8266WiFi.h>
+#include <ESP8266HTTPClient.h>
+#include <AutoConnect.h>
 #include <ESP8266WebServer.h>     // Replace with WebServer.h for ESP32
-#include <WiFiClient.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
@@ -14,20 +15,35 @@
 #include <SparkFun_APDS9960.h>
 #include "SoftwareSerial.h"
 #include <DFPlayerMini_Fast.h>
-#include "awtrix-conf.h"
-#include <WiFiManager.h>
-#include <DoubleResetDetect.h>
+#include <Wire.h>   
+#include <BME280_t.h>
 
+typedef ESP8266WebServer  WiFiWebServer;
 
-String version = "0.9b"; 
-char awtrix_server[40];
-WiFiClient espClient;
-PubSubClient client(espClient);
+int pingResult;
 
-//resetdetector
-#define DRD_TIMEOUT 1.0
-#define DRD_ADDRESS 0x00
-DoubleResetDetect drd(DRD_TIMEOUT, DRD_ADDRESS);
+AutoConnect  portal;
+AutoConnectConfig config;
+WiFiClient   wifiClient;
+PubSubClient mqttClient(wifiClient);
+
+#define PARAM_FILE      "/param.json"
+#define AUX_SETTING_URI "/AWTRIX_setting"
+#define AUX_SAVE_URI    "/awtrix_save"
+
+// instantiate BME sensor
+BME280<> BMESensor;
+
+bool tempState = false;
+
+String version = "0.9b";
+
+String  serverName;
+bool  LDR;
+bool DFPlayer; 
+int  TempSensor; 
+int  WIFI; 
+
 
 
 
@@ -40,11 +56,9 @@ int TIME_FOR_SEARCHING_WIFI = 1;
 byte myBytes[1000];
 unsigned int bufferpointer;
 
-//Zum speichern...
-int cfgStart = 0;
-
-//flag for saving data
-bool shouldSaveConfig = false;
+#define LDR_RESISTOR 1000 //ohms
+#define LDR_PIN A0
+#define LDR_PHOTOCELL LightDependentResistor::GL5516
 
 LightDependentResistor photocell(LDR_PIN, LDR_RESISTOR, LDR_PHOTOCELL);
 #define APDS9960_INT    D6
@@ -70,9 +84,240 @@ CRGB leds[256];
   FastLED_NeoMatrix *matrix = new FastLED_NeoMatrix(leds, 32, 8, NEO_MATRIX_TOP + NEO_MATRIX_LEFT + NEO_MATRIX_COLUMNS + NEO_MATRIX_ZIGZAG);
 #endif
 
-//Hotspot
-//ESP8266WebServer Server;
-//AutoConnect      Portal(Server);
+// JSON definition of AutoConnectAux.
+// Multiple AutoConnectAux can be defined in the JSON array.
+// In this example, JSON is hard-coded to make it easier to understand
+// the AutoConnectAux API. 
+static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
+[
+  {
+    "title": "AWTRIX Setting",
+    "uri": "/AWTRIX_setting",
+    "menu": true,
+    "element": [
+      {
+        "name": "header",
+        "type": "ACText",
+        "value": "<h2>AWTRIX controller settings</h2>",
+        "style": "text-align:center;color:#2f4f4f;padding:10px;"
+      },
+	  	      {
+      "name": "text1",
+      "type": "ACText",
+      "value": "Connection",
+      "style": "font-family:Arial;font-size:18px;font-weight:bold;color:#191970"
+    },
+      {
+        "name": "ServerIP",
+        "type": "ACInput",
+        "value": "",
+        "label": "Server",
+        "pattern": "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$",
+        "placeholder": "AWTRIX Server IP"
+      },
+	      {
+        "name": "newline1",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+	      {
+        "name": "WIFIorUSB",
+        "type": "ACRadio",
+        "value": [
+          "WiFi",
+		  "Serial"
+        ],
+        "label": "Connection mode",
+        "arrange": "vertical",
+        "checked": 1
+      },     
+      {
+        "name": "newline2",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+	       {
+        "name": "newline5",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+	      {
+      "name": "text2",
+      "type": "ACText",
+      "value": "Periphery",
+      "style": "font-family:Arial;font-size:18px;font-weight:bold;color:#191970"
+    },
+      {
+        "name": "LDR",
+        "type": "ACCheckbox",
+        "value": "unique",
+        "label": "Use LDR",
+        "checked": false
+      },
+	  {
+        "name": "DFPLayer",
+        "type": "ACCheckbox",
+        "value": "unique",
+        "label": "Use DFPLayer",
+        "checked": false
+      },
+	      {
+        "name": "newline3",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+
+      {
+        "name": "usedTempSensor",
+        "type": "ACRadio",
+        "value": [
+          "BME280",
+		  "HTU21D"
+        ],
+        "label": "Temperature Sensor",
+        "arrange": "vertical",
+        "checked": 1
+      },
+      {
+        "name": "newline4",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+
+      {
+        "name": "save",
+        "type": "ACSubmit",
+        "value": "Save&amp;Start",
+        "uri": "/awtrix_save"
+      },
+      {
+        "name": "discard",
+        "type": "ACSubmit",
+        "value": "Discard",
+        "uri": "/"
+      }
+    ]
+  },
+  {
+    "title": "AWTRIX Setting",
+    "uri": "/awtrix_save",
+    "menu": false,
+    "element": [
+      {
+        "name": "caption",
+        "type": "ACText",
+        "value": "<h4>Parameters saved as:</h4>",
+        "style": "text-align:center;color:#2f4f4f;padding:10px;"
+      },
+      {
+        "name": "parameters",
+        "type": "ACText"
+      },
+    ]
+  }
+]
+)raw";
+
+void getParams(AutoConnectAux& aux) {
+  serverName = aux["ServerIP"].value;
+  serverName.trim();
+  AutoConnectRadio& usedTempSensor = aux["usedTempSensor"].as<AutoConnectRadio>();
+
+	if (usedTempSensor.value() == "BME280"){
+		TempSensor = 1;
+	}
+	else if (usedTempSensor.value() == "BME280"){
+		TempSensor = 2;
+	}
+	else{
+		TempSensor = 0;
+	}
+
+
+  AutoConnectRadio& WIFIorUSB = aux["WIFIorUSB"].as<AutoConnectRadio>();
+
+  	if (WIFIorUSB.value() == "WiFi"){
+		WIFI = 0;
+	}
+	else {
+		WIFI = 1;
+	}
+
+
+  LDR = aux["LDR"].as<AutoConnectCheckbox>().checked;
+  DFPlayer = aux["DFPlayer"].as<AutoConnectCheckbox>().checked;
+}
+
+// Load parameters saved with  saveParams from SPIFFS into the
+// elements defined in /AWTRIX_setting JSON.
+String loadParams(AutoConnectAux& aux, PageArgument& args) {
+  (void)(args);
+  File param = SPIFFS.open(PARAM_FILE, "r");
+  if (param) {
+    if (aux.loadElement(param)) {
+      getParams(aux);
+      Serial.println(PARAM_FILE " loaded");
+    }
+    else
+      Serial.println(PARAM_FILE " failed to load");
+    param.close();
+  }
+  else {
+    Serial.println(PARAM_FILE " open failed");
+#ifdef ARDUINO_ARCH_ESP32
+    Serial.println("If you get error as 'SPIFFS: mount failed, -10025', Please modify with 'SPIFFS.begin(true)'.");
+#endif
+  }
+  return String("");
+}
+
+// Save the value of each element entered by '/AWTRIX_setting' to the
+// parameter file. The saveParams as below is a callback function of
+// /awtrix_save. When invoking this handler, the input value of each
+// element is already stored in '/AWTRIX_setting'.
+// In Sketch, you can output to stream its elements specified by name.
+String saveParams(AutoConnectAux& aux, PageArgument& args) {
+  // The 'where()' function returns the AutoConnectAux that caused
+  // the transition to this page.
+  AutoConnectAux&   AWTRIX_setting = *portal.aux(portal.where());
+  getParams(AWTRIX_setting);
+  AutoConnectInput& ServerIP = AWTRIX_setting["ServerIP"].as<AutoConnectInput>();
+
+  // The entered value is owned by AutoConnectAux of /AWTRIX_setting.
+  // To retrieve the elements of /AWTRIX_setting, it is necessary to get
+  // the AutoConnectAux object of /AWTRIX_setting.
+  File param = SPIFFS.open(PARAM_FILE, "w");
+  AWTRIX_setting.saveElement(param, { "ServerIP", "LDR","DFPlayer", "usedTempSensor", "WIFIorUSB" "hostname"});
+  param.close();
+
+  // Echo back saved parameters to AutoConnectAux page.
+  AutoConnectText&  echo = aux["parameters"].as<AutoConnectText>();
+  echo.value = "Server: " + serverName;
+  echo.value += ServerIP.isValid() ? String(" (OK)<br>") : String(" (ERR)<br>") ;
+  echo.value += "Temperatur Sensor: " + String(TempSensor)+ "<br>";
+  echo.value += "Connection via: " + String(WIFI)+ "<br>";
+  echo.value += "Use LDR: " + String(LDR == true ? "true" : "false") + "<br>";
+  echo.value += "Use DFPlayer: " + String(DFPlayer == true ? "true" : "false") + "<br>";
+
+
+  return String("");
+}
+
+void handleRoot() {
+  String  content =
+    "<html>"
+    "<head>"
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    "</head>"
+    "<body>"
+    "<iframe width=\"450\" height=\"260\" style=\"transform:scale(0.79);-o-transform:scale(0.79);-webkit-transform:scale(0.79);-moz-transform:scale(0.79);-ms-transform:scale(0.79);transform-origin:0 0;-o-transform-origin:0 0;-webkit-transform-origin:0 0;-moz-transform-origin:0 0;-ms-transform-origin:0 0;border: 1px solid #cccccc;\" src=\"https://thingspeak.com/channels/454951/charts/1?bgcolor=%23ffffff&color=%23d62020&dynamic=true&type=line\"></iframe>"
+    "<p style=\"padding-top:5px;text-align:center\">" AUTOCONNECT_LINK(COG_24) "</p>"
+    "</body>"
+    "</html>";
+
+  WiFiWebServer&  webServer = portal.host();
+  webServer.send(200, "text/html", content);
+}
 
 static byte c1;  // Last character buffer
 byte utf8ascii(byte ascii) {
@@ -373,25 +618,11 @@ void updateMatrix(byte payload[],int length){
 			myMP3.playFolder(payload[1],payload[2]);
 			break;
 		}
-		case 11:{
-			//Command 11: GetLux
-			if(!usbWifi){
-				StaticJsonBuffer<200> jsonBuffer;
-				client.publish("matrixLux", String(photocell.getCurrentLux()).c_str());
-			} else {
-				StaticJsonBuffer<200> jsonBuffer;
-				JsonObject& root = jsonBuffer.createObject();
-				root["LUX"] = photocell.getCurrentLux();
-				String JS;
-				root.printTo(JS);
-				Serial.println(String(JS));
-			}
-			break;
-		}
 		case 12:{
 			//Command 12: GetMatrixInfo
 			StaticJsonBuffer<200> jsonBuffer;
 			JsonObject& root = jsonBuffer.createObject();
+			root["type"] = "MatrixInfo";
 			root["version"] = version;
 			root["wifirssi"] = String(WiFi.RSSI());
 			root["wifiquality"] =GetRSSIasQuality(WiFi.RSSI());
@@ -399,8 +630,8 @@ void updateMatrix(byte payload[],int length){
 			root["getIP"] =WiFi.localIP().toString();
 			String JS;
 			root.printTo(JS);
-			if (!usbWifi){
-				client.publish("matrixInfo", JS.c_str());
+			if (WIFI==0){
+				mqttClient.publish("matrixClient", JS.c_str());
 			} else {
 				Serial.println(String(JS));
 			}
@@ -418,14 +649,14 @@ void callback(char *topic, byte *payload, unsigned int length){
 }
 
 void reconnect(){
-	if(!usbWifi){
-		while (!client.connected()){
+	if(WIFI==0){
+		while (!mqttClient.connected()){
 			String clientId = "AWTRIXController-";
 			clientId += String(random(0xffff), HEX);
 			hardwareAnimatedSearch(1,28,0);
-			if (client.connect(clientId.c_str())){
-				client.subscribe("awtrixmatrix/#");
-				client.publish("matrixstate", "connected");
+			if (mqttClient.connect(clientId.c_str())){
+				mqttClient.subscribe("awtrixmatrix/#");
+				mqttClient.publish("matrixClient", "connected");
 			}
 		}
 	}
@@ -460,15 +691,17 @@ void handleGesture() {
       default:
 				control = "NONE";
     }
-		#ifdef USB_CONNECTION
 			StaticJsonBuffer<200> jsonBuffer;
 			JsonObject& root = jsonBuffer.createObject();
+			root["type"] = "Gesture";
+			root["gesture"] = control;
 			String JS;
 			root.printTo(JS);
+		if (WIFI==0){
+			mqttClient.publish("matrixClient", JS.c_str());
+		}else{	
 			Serial.println(String(JS));
-		#else
-			client.publish("control", control.c_str());
-		#endif
+		}		
   }
 }
 
@@ -498,96 +731,68 @@ void flashProgress(unsigned int progress, unsigned int total) {
     matrix->show();
 }
 
-void saveConfigCallback () {
-  Serial.println("Should save config");
-  shouldSaveConfig = true;
-}
-
-void configModeCallback (WiFiManager *myWiFiManager) {
-	Serial.println("Entered config mode");
-	Serial.println(WiFi.softAPIP());
-	//if you used auto generated SSID, print it
-	Serial.println(myWiFiManager->getConfigPortalSSID());
+bool startCP(IPAddress ip) {
 	matrix->clear();
 	matrix->setCursor(3, 6);
+	matrix->setTextColor(matrix->Color(0, 255, 0));
 	matrix->print("Hotspot");
 	matrix->show();
+  return true;
 }
 
 void setup(){
+	delay(1000);
+	//FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
+	//matrix->begin();
+	//matrix->setTextWrap(false);
+	//matrix->setBrightness(80);
+	//matrix->setFont(&TomThumb);
+	//Serial.setRxBufferSize(1024);
 	Serial.begin(115200);
- 	Serial.println("mounting FS...");
-  if (SPIFFS.begin()) {
-    Serial.println("mounted file system");
-    if (SPIFFS.exists("/config.json")) {
-      //file exists, reading and loading
-      Serial.println("reading config file");
-      File configFile = SPIFFS.open("/config.json", "r");
-      if (configFile) {
-        Serial.println("opened config file");
-        size_t size = configFile.size();
-        // Allocate a buffer to store contents of the file.
-        std::unique_ptr<char[]> buf(new char[size]);
+	config.title= "AWTRIX Controller";
+	config.apid= "AWTRIX Controller";
+	config.apip=IPAddress(8,8,8,8);
+ 	////portal.onDetect(startCP);
+	SPIFFS.begin();
+  if (portal.load(FPSTR(AUX_AWTRIX_setting))) {
+    AutoConnectAux& AWTRIX_setting = *portal.aux(AUX_SETTING_URI);
+    PageArgument  args;
+    loadParams(AWTRIX_setting, args);
+    config.bootUri = AC_ONBOOTURI_HOME;
+    config.homeUri = "/";
+    portal.config(config);
+    portal.on(AUX_SETTING_URI, loadParams);
+    portal.on(AUX_SAVE_URI, saveParams);
+  }
+  else
+    Serial.println("load error");
 
-        configFile.readBytes(buf.get(), size);
-        DynamicJsonBuffer jsonBuffer;
-        JsonObject& json = jsonBuffer.parseObject(buf.get());
-        json.printTo(Serial);
-        if (json.success()) {
-          Serial.println("\nparsed json");
-          strcpy(awtrix_server, json["awtrix_server"]);
-        } else {
-          Serial.println("failed to load json config");
-        }
-        configFile.close();
-      }
-    }
-  } else {
-    Serial.println("failed to mount FS");
+  Serial.print("WiFi ");
+  if (portal.begin()) {
+    Serial.println("connected:" + WiFi.SSID());
+    Serial.println("IP:" + WiFi.localIP().toString());
+	
+  }
+  else {
+    Serial.println("connection failed:" + String(WiFi.status()));
+    Serial.println("Needs WiFi connection to start publishing messages");
   }
 
-	//Extra parameter for configuration the Awtrix-Client
-	WiFiManagerParameter custom_server_ip("server", "awtrix_server", awtrix_server, 20);
-	WiFiManager wifiManager;
-  	wifiManager.setAPCallback(configModeCallback);
-	wifiManager.setSaveConfigCallback(saveConfigCallback);
-	wifiManager.addParameter(&custom_server_ip);
-  wifiManager.setCustomHeadElement("<style>html{ background-color: #646567;}</style>");
+  WiFiWebServer&  webServer = portal.host();
+  webServer.on("/", handleRoot);
 
- if (drd.detect())
-    {
-        Serial.println("** Double reset boot **");
-        wifiManager.resetSettings();
-    }
-
-	matrix->begin();
-	matrix->setTextWrap(false);
-	matrix->setBrightness(80);
-	matrix->setFont(&TomThumb);
 
 	mySoftwareSerial.begin(9600);
-	FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
-	wifiManager.setAPStaticIPConfig(IPAddress(8,8,8,8),IPAddress(192,168,4,1),IPAddress(255,255,255,0));
-	wifiManager.autoConnect("AWTRIX MATRIX","awtrixxx");
+	
 
-	strcpy(awtrix_server, custom_server_ip.getValue());
-	Serial.printf("Stored ServerIP: %s\n",awtrix_server);
-		if(shouldSaveConfig){
-			Serial.println("saving config");
-			DynamicJsonBuffer jsonBuffer;
-			JsonObject& json = jsonBuffer.createObject();
-			json["awtrix_server"] = awtrix_server;
-			File configFile = SPIFFS.open("/config.json", "w");
-			if (!configFile) {
-				Serial.println("failed to open config file for writing");
-			}
-			json.printTo(Serial);
-			json.printTo(configFile);
-			configFile.close();
-		}
-		hardwareAnimatedCheck(0,27,2);
-		client.setServer(awtrix_server, 7001);
-		client.setCallback(callback);
+
+	
+	hardwareAnimatedCheck(0,27,2);
+
+	mqttClient.setServer(serverName.c_str(), 7001);
+	mqttClient.setCallback(callback);
+
+
 	photocell.setPhotocellPositionOnGround(false);
 	myMP3.begin(mySoftwareSerial);
 	Wire.begin(APDS9960_SDA,APDS9960_SCL);
@@ -601,7 +806,7 @@ void setup(){
   	});
 
 	ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-			flashProgress(progress, total);
+		flashProgress(progress, total);
 	});
 
   	ArduinoOTA.begin();
@@ -610,14 +815,12 @@ void setup(){
 
 	bufferpointer=0;
 
-	myTime = millis()-500;
-	myCounter = 0;
 }
 
 void loop() {
- 	ArduinoOTA.handle();
+  ArduinoOTA.handle();
+  portal.handleClient();
 
-	
 	if(firstStart){
 		if(millis()-myTime>500){
 			hardwareAnimatedSearchFast(myCounter,28,0);
@@ -631,7 +834,7 @@ void loop() {
 	}
 
  	if (!updating) {
-	 	if(usbWifi){
+	 	if(WIFI==1){
 			while(Serial.available () > 0){
 				myBytes[bufferpointer] = Serial.read();
 				if ((myBytes[bufferpointer]==255)&&(myBytes[bufferpointer-1]==255)&&(myBytes[bufferpointer-2]==255)){
@@ -650,10 +853,10 @@ void loop() {
 			}
 		}
 		else {
-			if (!client.connected()){
+			if (!mqttClient.connected()){
 				reconnect();
 			}else{
-				client.loop();
+				mqttClient.loop();
 			}
 		}
 	if(isr_flag == 1) {
@@ -663,4 +866,6 @@ void loop() {
     attachInterrupt(APDS9960_INT, interruptRoutine, FALLING);
   }
 }
+
+
 }
