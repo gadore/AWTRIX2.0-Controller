@@ -1,515 +1,311 @@
-#include <ArduinoOTA.h>
+/*
+ESP8266/ESP32 publish the RSSI as the WiFi signal strength to ThingSpeak channel.
+This example is for explaining how to use the AutoConnect library.
+
+In order to execute this example, the ThingSpeak account is needed. Sing up
+for New User Account and create a New Channel via My Channels.
+For details, please refer to the project page.
+https://hieromon.github.io/AutoConnect/howtoembed.html#used-with-mqtt-as-a-client-application
+
+This example is based on the environment as of March 20, 2018.
+Copyright (c) 2018 Hieromon Ikasamo.
+This software is released under the MIT License.
+https://opensource.org/licenses/MIT
+*/
+
+#if defined(ARDUINO_ARCH_ESP8266)
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <PubSubClient.h>
+#include <ESP8266HTTPClient.h>
+#define GET_CHIPID()  (ESP.getChipId())
+#elif defined(ARDUINO_ARCH_ESP32)
+#include <WiFi.h>
+#include <SPIFFS.h>
+#include <HTTPClient.h>
+#define GET_CHIPID()  ((uint16_t)(ESP.getEfuseMac()>>32))
+#endif
 #include <FS.h>
-#include <ArduinoJson.h>
-#include <Adafruit_GFX.h>
-#include <FastLED.h>
-#include <FastLED_NeoMatrix.h>
-#include <Fonts/TomThumb.h>
-#include <LightDependentResistor.h>
-#include <Wire.h>
-#include <SparkFun_APDS9960.h>
-#include "SoftwareSerial.h"
-#include <DFPlayerMini_Fast.h>
-#include "awtrix-conf.h"
+#include <PubSubClient.h>
+#include <AutoConnect.h>
 
-String version = "0.8.1"; 
+#define PARAM_FILE      "/param.json"
+#define AUX_SETTING_URI "/AWTRIX_setting"
+#define AUX_SAVE_URI    "/awtrix_save"
+#define AUX_CLEAR_URI   "/mqtt_clear"
 
-#ifndef USB_CONNECTION
-	WiFiClient espClient;
-	PubSubClient client(espClient);
-#endif
-
-LightDependentResistor photocell(LDR_PIN, LDR_RESISTOR, LDR_PHOTOCELL);
-#define APDS9960_INT    D6
-#define APDS9960_SDA    D3
-#define APDS9960_SCL    D1
-SparkFun_APDS9960 apds = SparkFun_APDS9960();
-volatile bool isr_flag = 0;
-
-#ifndef ICACHE_RAM_ATTR
-#define ICACHE_RAM_ATTR IRAM_ATTR
-#endif
-bool updating = false;
-DFPlayerMini_Fast myMP3;
-
-SoftwareSerial mySoftwareSerial(13, 15); // RX, TX
-
-
-CRGB leds[256];
-#ifdef MATRIX_MODEV2
-  FastLED_NeoMatrix *matrix = new FastLED_NeoMatrix(leds, 32, 8, NEO_MATRIX_TOP + NEO_MATRIX_LEFT + NEO_MATRIX_ROWS + NEO_MATRIX_ZIGZAG);
-#else
-  FastLED_NeoMatrix *matrix = new FastLED_NeoMatrix(leds, 32, 8, NEO_MATRIX_TOP + NEO_MATRIX_LEFT + NEO_MATRIX_COLUMNS + NEO_MATRIX_ZIGZAG);
-#endif
-
-static byte c1;  // Last character buffer
-byte utf8ascii(byte ascii) {
-  if ( ascii < 128 ) // Standard ASCII-set 0..0x7F handling
-  { c1 = 0;
-    return ( ascii );
-  }
-  // get previous input
-byte last = c1;   // get last char
-  c1 = ascii;       // remember actual character
-  switch (last)     // conversion depending on first UTF8-character
-  { case 0xC2: return  (ascii) - 34;  break;
-    case 0xC3: return  (ascii | 0xC0) - 34;  break;
-    case 0x82: if (ascii == 0xAC) return (0xEA);   
-  }
-  return  (0);
-}
-
-String utf8ascii(String s) {
-  String r = "";
-  char c;
-  for (int i = 0; i < s.length(); i++)
+// JSON definition of AutoConnectAux.
+// Multiple AutoConnectAux can be defined in the JSON array.
+// In this example, JSON is hard-coded to make it easier to understand
+// the AutoConnectAux API. In practice, it will be an external content
+// which separated from the sketch, as the mqtt_RSSI_FS example shows.
+static const char AUX_AWTRIX_setting[] PROGMEM = R"raw(
+[
   {
-    c = utf8ascii(s.charAt(i));
-    if (c != 0) r += c;
-  }
-  return r;
-}
+    "title": "AWTRIX Setting",
+    "uri": "/AWTRIX_setting",
+    "menu": true,
+    "element": [
+      {
+        "name": "header",
+        "type": "ACText",
+        "value": "<h2>AWTRIX controller settings</h2>",
+        "style": "text-align:center;color:#2f4f4f;padding:10px;"
+      },
+	  	      {
+      "name": "text1",
+      "type": "ACText",
+      "value": "Connection",
+      "style": "font-family:Arial;font-size:18px;font-weight:bold;color:#191970"
+    },
+      {
+        "name": "ServerIP",
+        "type": "ACInput",
+        "value": "",
+        "label": "Server",
+        "pattern": "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$",
+        "placeholder": "AWTRIX Server IP"
+      },
+	      {
+        "name": "newline1",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+	      {
+        "name": "WIFIorUSB",
+        "type": "ACRadio",
+        "value": [
+          "WiFi",
+		  "Serial"
+        ],
+        "label": "Connection mode",
+        "arrange": "vertical",
+        "checked": 1
+      },     
+      {
+        "name": "newline2",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+	       {
+        "name": "newline5",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+	      {
+      "name": "text2",
+      "type": "ACText",
+      "value": "Periphery",
+      "style": "font-family:Arial;font-size:18px;font-weight:bold;color:#191970"
+    },
+      {
+        "name": "LDR",
+        "type": "ACCheckbox",
+        "value": "unique",
+        "label": "Use LDR",
+        "checked": false
+      },
+	  {
+        "name": "DFPLayer",
+        "type": "ACCheckbox",
+        "value": "unique",
+        "label": "Use DFPLayer",
+        "checked": false
+      },
+	      {
+        "name": "newline3",
+        "type": "ACElement",
+        "value": "<br>"
+      },
 
-void utf8ascii(char* s) {
-  int k = 0;
-  char c;
-  for (int i = 0; i < strlen(s); i++)
+      {
+        "name": "usedTempSensor",
+        "type": "ACRadio",
+        "value": [
+          "BME280",
+		  "HTU21D"
+        ],
+        "label": "Temperature Sensor",
+        "arrange": "vertical",
+        "checked": 1
+      },
+      {
+        "name": "newline4",
+        "type": "ACElement",
+        "value": "<br>"
+      },
+
+      {
+        "name": "save",
+        "type": "ACSubmit",
+        "value": "Save&amp;Start",
+        "uri": "/awtrix_save"
+      },
+      {
+        "name": "discard",
+        "type": "ACSubmit",
+        "value": "Discard",
+        "uri": "/"
+      }
+    ]
+  },
   {
-    c = utf8ascii(s[i]);
-    if (c != 0)
-      s[k++] = c;
+    "title": "AWTRIX Setting",
+    "uri": "/awtrix_save",
+    "menu": false,
+    "element": [
+      {
+        "name": "caption",
+        "type": "ACText",
+        "value": "<h4>Parameters saved as:</h4>",
+        "style": "text-align:center;color:#2f4f4f;padding:10px;"
+      },
+      {
+        "name": "parameters",
+        "type": "ACText"
+      },
+    ]
   }
-  s[k] = 0;
-}
+]
+)raw";
 
-
-String GetChipID()
-{
-	return String(ESP.getChipId());
-}
-
-int GetRSSIasQuality(int rssi)
-{
-	int quality = 0;
-
-	if (rssi <= -100)
-	{
-		quality = 0;
-	}
-	else if (rssi >= -50)
-	{
-		quality = 100;
-	}
-	else
-	{
-		quality = 2 * (rssi + 100);
-	}
-	return quality;
-}
-
-unsigned long startTime = 0;
-unsigned long endTime = 0;
-unsigned long duration;
-
-#ifndef USB_CONNECTION
-void callback(char *topic, byte *payload, unsigned int length)
-{
-	String s_payload = String((char *)payload);
-	String s_topic = String(topic);
-	int last = s_topic.lastIndexOf("/") + 1;
-	String channel = s_topic.substring(last);
-
-	DynamicJsonBuffer jsonBuffer;
-	JsonObject &json = jsonBuffer.parseObject(s_payload);
-
-	if (channel.equals("show"))
-	{
-		matrix->show();
-	}
-	else if (channel.equals("clear"))
-	{
-		matrix->clear();
-	}
-	else if (channel.equals("drawText"))
-	{
-		if (json["font"].as<String>().equals("big"))
-		{
-			matrix->setFont();
-			matrix->setCursor(json["x"].as<int16_t>(), json["y"].as<int16_t>() - 1);
-		}
-		else
-		{
-			matrix->setFont(&TomThumb);
-			matrix->setCursor(json["x"].as<int16_t>(), json["y"].as<int16_t>() + 5);
-		}
-		matrix->setTextColor(matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-		String text = json["text"];
-		
-		matrix->print(utf8ascii(text));
-	}
-	else if (channel.equals("drawBMP"))
-	{
-		int16_t h = json["height"].as<int16_t>();
-		int16_t w = json["width"].as<int16_t>();
-		int16_t x = json["x"].as<int16_t>();
-		int16_t y = json["y"].as<int16_t>();
-
-		for (int16_t j = 0; j < h; j++, y++)
-		{
-			for (int16_t i = 0; i < w; i++)
-			{
-				matrix->drawPixel(x + i, y, json["bmp"][j * w + i].as<int16_t>());
-			}
-		}
-	}
-	else if (channel.equals("drawLine"))
-	{
-		matrix->drawLine(json["x0"].as<int16_t>(), json["y0"].as<int16_t>(), json["x1"].as<int16_t>(), json["y1"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (channel.equals("drawCircle"))
-	{
-		matrix->drawCircle(json["x0"].as<int16_t>(), json["y0"].as<int16_t>(), json["r"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (channel.equals("drawRect"))
-	{
-		matrix->drawRect(json["x"].as<int16_t>(), json["y"].as<int16_t>(), json["w"].as<int16_t>(), json["h"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-		else if (channel.equals("fill"))
-	{
-		matrix->fillScreen(matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (channel.equals("drawPixel"))
-	{
-		matrix->drawPixel(json["x"].as<int16_t>(), json["y"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (channel.equals("play"))
-	{
-		myMP3.volume(json["vol"].as<int8>());
-		delay(20);
-		myMP3.playFolder(json["folder"].as<int8>(),json["file"].as<int8>());
-	}
-	else if (channel.equals("setBrightness"))
-	{
-		matrix->setBrightness(json["brightness"].as<int16_t>());
-	}
-	else if (channel.equals("speedtest"))
-	{
-		matrix->setFont(&TomThumb);
-		matrix->setCursor(0, 7);
-
-		endTime = millis();
-		duration = endTime - startTime;
-		if (duration > 85 || duration < 75)
-		{
-			matrix->setTextColor(matrix->Color(255, 0, 0));
-		}
-		else
-		{
-			matrix->setTextColor(matrix->Color(0, 255, 0));
-		}
-		matrix->print(duration);
-		startTime = millis();
-	}
-	else if (channel.equals("getMatrixInfo"))
-	{
-		StaticJsonBuffer<200> jsonBuffer;
-		JsonObject& root = jsonBuffer.createObject();
-		root["version"] = version;
-		root["wifirssi"] = String(WiFi.RSSI());
-		root["wifiquality"] =GetRSSIasQuality(WiFi.RSSI());
-		root["wifissid"] =WiFi.SSID();
-		root["getIP"] =WiFi.localIP().toString();
-		String JS;
-		root.printTo(JS);
-		client.publish("matrixInfo", JS.c_str());
-	}
-	else if (channel.equals("getLUX"))
-	{
-		StaticJsonBuffer<200> jsonBuffer;
-		client.publish("matrixLux", String(photocell.getCurrentLux()).c_str());
-	}
-}
-
-void reconnect()
-{
-	while (!client.connected())
-	{
-		String clientId = "AWTRIXController-";
-    clientId += String(random(0xffff), HEX);
-		if (client.connect(clientId.c_str()))
-		{
-			client.subscribe("awtrixmatrix/#");
-			client.publish("matrixstate", "connected");
-		}
-		else
-		{
-			delay(5000);
-		}
-	}
-}
-#else
-void processing(String cmd)
-{
-	DynamicJsonBuffer jsonBuffer;
-	JsonObject &json = jsonBuffer.parseObject(cmd);
-	String type = json["type"];
-	if (type.equals("show"))
-	{
-		matrix->show();
-	}
-	else if (type.equals("clear"))
-	{
-		matrix->clear();
-	}
-	else if (type.equals("drawText"))
-	{
-		if (json["font"].as<String>().equals("big"))
-		{
-			matrix->setFont();
-			matrix->setCursor(json["x"].as<int16_t>(), json["y"].as<int16_t>() - 1);
-		}
-		else
-		{
-			matrix->setFont(&TomThumb);
-			matrix->setCursor(json["x"].as<int16_t>(), json["y"].as<int16_t>() + 5);
-		}
-		matrix->setTextColor(matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-		String text = json["text"];
-		
-		matrix->print(utf8ascii(text));
-	}
-	else if (type.equals("drawBMP"))
-	{
-		int16_t h = json["height"].as<int16_t>();
-		int16_t w = json["width"].as<int16_t>();
-		int16_t x = json["x"].as<int16_t>();
-		int16_t y = json["y"].as<int16_t>();
-
-		for (int16_t j = 0; j < h; j++, y++)
-		{
-			for (int16_t i = 0; i < w; i++)
-			{
-				matrix->drawPixel(x + i, y, json["bmp"][j * w + i].as<int16_t>());
-			}
-		}
-	}
-	else if (type.equals("drawLine"))
-	{
-		matrix->drawLine(json["x0"].as<int16_t>(), json["y0"].as<int16_t>(), json["x1"].as<int16_t>(), json["y1"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (type.equals("drawCircle"))
-	{
-		matrix->drawCircle(json["x0"].as<int16_t>(), json["y0"].as<int16_t>(), json["r"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (type.equals("drawRect"))
-	{
-		matrix->drawRect(json["x"].as<int16_t>(), json["y"].as<int16_t>(), json["w"].as<int16_t>(), json["h"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-		else if (type.equals("fill"))
-	{
-		matrix->fillScreen(matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (type.equals("drawPixel"))
-	{
-		matrix->drawPixel(json["x"].as<int16_t>(), json["y"].as<int16_t>(), matrix->Color(json["color"][0].as<int16_t>(), json["color"][1].as<int16_t>(), json["color"][2].as<int16_t>()));
-	}
-	else if (type.equals("setBrightness"))
-	{
-		matrix->setBrightness(json["brightness"].as<int16_t>());
-	}
-		else if (type.equals("play"))
-	{
-		myMP3.volume(json["vol"].as<int8>());
-		delay(20);
-		myMP3.playFolder(json["folder"].as<int8>(),json["file"].as<int8>());
-	}
-	else if (type.equals("speedtest"))
-	{
-		matrix->setFont(&TomThumb);
-		matrix->setCursor(0, 7);
-
-		endTime = millis();
-		duration = endTime - startTime;
-		if (duration > 85 || duration < 75)
-		{
-			matrix->setTextColor(matrix->Color(255, 0, 0));
-		}
-		else
-		{
-			matrix->setTextColor(matrix->Color(0, 255, 0));
-		}
-		matrix->print(duration);
-		startTime = millis();
-	}
-	else if (type.equals("getMatrixInfo"))
-	{
-		StaticJsonBuffer<200> jsonBuffer;
-		JsonObject& root = jsonBuffer.createObject();
-		root["version"] = version;
-		root["wifirssi"] = String(WiFi.RSSI());
-		root["wifiquality"] =GetRSSIasQuality(WiFi.RSSI());
-		root["wifissid"] =WiFi.SSID();
-		root["getIP"] =WiFi.localIP().toString();
-		String JS;
-		root.printTo(JS);
-		Serial.println(String(JS));
-	}
-	else if (type.equals("getLUX"))
-	{
-		StaticJsonBuffer<200> jsonBuffer;
-		JsonObject& root = jsonBuffer.createObject();
-		root["LUX"] = photocell.getCurrentLux();
-		String JS;
-		root.printTo(JS);
-		Serial.println(String(JS));
-	}
-}
+// Adjusting WebServer class with between ESP8266 and ESP32.
+#if defined(ARDUINO_ARCH_ESP8266)
+typedef ESP8266WebServer  WiFiWebServer;
+#elif defined(ARDUINO_ARCH_ESP32)
+typedef WebServer WiFiWebServer;
 #endif
 
-void ICACHE_RAM_ATTR interruptRoutine() {
-  isr_flag = 1;
+AutoConnect  portal;
+AutoConnectConfig config;
+WiFiClient   wifiClient;
+PubSubClient mqttClient(wifiClient);
+String  serverName;
+String  apid;
+bool  LDR;
+bool DFPlayer;
+String  TempSensor; 
+String  WIFI;
+
+
+void getParams(AutoConnectAux& aux) {
+  serverName = aux["ServerIP"].value;
+  serverName.trim();
+  AutoConnectRadio& usedTempSensor = aux["usedTempSensor"].as<AutoConnectRadio>();
+  TempSensor = usedTempSensor.value();
+
+  AutoConnectRadio& WIFIorUSB = aux["WIFIorUSB"].as<AutoConnectRadio>();
+  WIFI = WIFIorUSB.value();
+
+  LDR = aux["LDR"].as<AutoConnectCheckbox>().checked;
+  DFPlayer = aux["DFPlayer"].as<AutoConnectCheckbox>().checked;
 }
 
-void handleGesture() {
-		String control;
-    if (apds.isGestureAvailable()) {
-    switch ( apds.readGesture() ) {
-      case DIR_UP:
-			control = "UP";
-        break;
-      case DIR_DOWN:
-			control = "DOWN";
-        break;
-      case DIR_LEFT:
-			control = "LEFT";
-        break;
-      case DIR_RIGHT:
-				control = "RIGHT";
-        break;
-      case DIR_NEAR:
-				control = "NEAR";
-        break;
-      case DIR_FAR:
-				control = "FAR";
-        break;
-      default:
-				control = "NONE";
+// Load parameters saved with  saveParams from SPIFFS into the
+// elements defined in /AWTRIX_setting JSON.
+String loadParams(AutoConnectAux& aux, PageArgument& args) {
+  (void)(args);
+  File param = SPIFFS.open(PARAM_FILE, "r");
+  if (param) {
+    if (aux.loadElement(param)) {
+      getParams(aux);
+      Serial.println(PARAM_FILE " loaded");
     }
-		#ifdef USB_CONNECTION
-			StaticJsonBuffer<200> jsonBuffer;
-			JsonObject& root = jsonBuffer.createObject();
-			String JS;
-			root.printTo(JS);
-			Serial.println(String(JS));
-		#else
-			client.publish("control", control.c_str());
-		#endif
+    else
+      Serial.println(PARAM_FILE " failed to load");
+    param.close();
   }
-}
-
-uint32_t Wheel(byte WheelPos, int pos) {
-  if(WheelPos < 85) {
-   return matrix->Color((WheelPos * 3)-pos, (255 - WheelPos * 3)-pos, 0);
-  } else if(WheelPos < 170) {
-   WheelPos -= 85;
-   return matrix->Color((255 - WheelPos * 3)-pos, 0, (WheelPos * 3)-pos);
-  } else {
-   WheelPos -= 170;
-   return matrix->Color(0, (WheelPos * 3)-pos, (255 - WheelPos * 3)-pos);
+  else {
+    Serial.println(PARAM_FILE " open failed");
+#ifdef ARDUINO_ARCH_ESP32
+    Serial.println("If you get error as 'SPIFFS: mount failed, -10025', Please modify with 'SPIFFS.begin(true)'.");
+#endif
   }
+  return String("");
 }
 
-void flashProgress(unsigned int progress, unsigned int total) {
-    matrix->setBrightness(100);   
-    long num = 32 * 8 * progress / total;
-    for (unsigned char y = 0; y < 8; y++) {
-        for (unsigned char x = 0; x < 32; x++) {
-            if (num-- > 0) matrix->drawPixel(x, 8 - y - 1, Wheel((num*16) & 255,0));
-        }
-    }
-    matrix->setCursor(0, 6);
-		matrix->setTextColor(matrix->Color(255, 255, 255));
-    matrix->print("FLASHING");
-    matrix->show();
+// Save the value of each element entered by '/AWTRIX_setting' to the
+// parameter file. The saveParams as below is a callback function of
+// /awtrix_save. When invoking this handler, the input value of each
+// element is already stored in '/AWTRIX_setting'.
+// In Sketch, you can output to stream its elements specified by name.
+String saveParams(AutoConnectAux& aux, PageArgument& args) {
+  // The 'where()' function returns the AutoConnectAux that caused
+  // the transition to this page.
+  AutoConnectAux&   AWTRIX_setting = *portal.aux(portal.where());
+  getParams(AWTRIX_setting);
+  AutoConnectInput& ServerIP = AWTRIX_setting["ServerIP"].as<AutoConnectInput>();
+
+  // The entered value is owned by AutoConnectAux of /AWTRIX_setting.
+  // To retrieve the elements of /AWTRIX_setting, it is necessary to get
+  // the AutoConnectAux object of /AWTRIX_setting.
+  File param = SPIFFS.open(PARAM_FILE, "w");
+  AWTRIX_setting.saveElement(param, { "ServerIP", "LDR","DFPlayer", "usedTempSensor", "WIFIorUSB" "hostname"});
+  param.close();
+
+  // Echo back saved parameters to AutoConnectAux page.
+  AutoConnectText&  echo = aux["parameters"].as<AutoConnectText>();
+  echo.value = "Server: " + serverName;
+  echo.value += ServerIP.isValid() ? String(" (OK)<br>") : String(" (ERR)<br>") ;
+  echo.value += "Temperatur Sensor: " + String(TempSensor)+ "<br>";
+  echo.value += "Connection via: " + String(WIFI)+ "<br>";
+  echo.value += "Use LDR: " + String(LDR == true ? "true" : "false") + "<br>";
+  echo.value += "Use DFPlayer: " + String(DFPlayer == true ? "true" : "false") + "<br>";
+
+
+  return String("");
+}
+
+void handleRoot() {
+  String  content =
+    "<html>"
+    "<head>"
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+    "</head>"
+    "<body>"
+    "<iframe width=\"450\" height=\"260\" style=\"transform:scale(0.79);-o-transform:scale(0.79);-webkit-transform:scale(0.79);-moz-transform:scale(0.79);-ms-transform:scale(0.79);transform-origin:0 0;-o-transform-origin:0 0;-webkit-transform-origin:0 0;-moz-transform-origin:0 0;-ms-transform-origin:0 0;border: 1px solid #cccccc;\" src=\"https://thingspeak.com/channels/454951/charts/1?bgcolor=%23ffffff&color=%23d62020&dynamic=true&type=line\"></iframe>"
+    "<p style=\"padding-top:5px;text-align:center\">" AUTOCONNECT_LINK(COG_24) "</p>"
+    "</body>"
+    "</html>";
+
+  WiFiWebServer&  webServer = portal.host();
+  webServer.send(200, "text/html", content);
 }
 
 
-void setup()
-{
-	FastLED.addLeds<NEOPIXEL, D2>(leds, 256).setCorrection(TypicalLEDStrip);
-	WiFi.mode(WIFI_STA);
-	WiFi.begin(ssid, password);
-	matrix->begin();
-	matrix->setTextWrap(false);
-	matrix->setBrightness(80);
-	matrix->setFont(&TomThumb);
-	matrix->setCursor(7, 6);
-	matrix->print("WiFi...");
-	matrix->show();
-	while (WiFi.status() != WL_CONNECTED)
-	{
-		delay(500);
-	}
+void setup() {
+  delay(1000);
+  Serial.begin(115200);
+  Serial.println();
+  SPIFFS.begin();
+  if (portal.load(FPSTR(AUX_AWTRIX_setting))) {
+    AutoConnectAux& AWTRIX_setting = *portal.aux(AUX_SETTING_URI);
+    PageArgument  args;
+    loadParams(AWTRIX_setting, args);
+    
+    config.bootUri = AC_ONBOOTURI_HOME;
+    config.homeUri = "/";
+    portal.config(config);
 
-	matrix->clear();
-	matrix->setCursor(6, 6);
-	matrix->setTextColor(matrix->Color(0,255,0));
-	matrix->print("Ready!");
-	matrix->show();
-	photocell.setPhotocellPositionOnGround(false);
-
- #ifdef USB_CONNECTION
-	Serial.begin(115200);
- #else
-	client.setServer(awtrix_server, 7001);
-	client.setCallback(callback);
- #endif
-
- 	mySoftwareSerial.begin(9600);
-	myMP3.begin(mySoftwareSerial);
-
-	Wire.begin(APDS9960_SDA,APDS9960_SCL);
-  pinMode(APDS9960_INT, INPUT);
-	attachInterrupt(APDS9960_INT, interruptRoutine, FALLING);
-  apds.init();
-  apds.enableGestureSensor(true);
-  ArduinoOTA.onStart([&]() {
-		updating = true;
-		matrix->clear();
-  });
-
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    flashProgress(progress, total);
-  });
-
-  ArduinoOTA.begin();
-}
-
-void loop()
-{
- ArduinoOTA.handle();
- if (!updating) {
-	 #ifdef USB_CONNECTION
-		while (Serial.available () > 0) {
-			String message= Serial.readStringUntil('}')+"}";
-			processing(message);
-			};
-	#else
-		if (!client.connected())
-		{
-			reconnect();
-		}else{
-			client.loop();
-		}
-	#endif
-	if(isr_flag == 1) {
-    detachInterrupt(APDS9960_INT);
-    handleGesture();
-    isr_flag = 0;
-    attachInterrupt(APDS9960_INT, interruptRoutine, FALLING);
+    portal.on(AUX_SETTING_URI, loadParams);
+    portal.on(AUX_SAVE_URI, saveParams);
   }
+  else
+    Serial.println("load error");
+
+  Serial.print("WiFi ");
+  if (portal.begin()) {
+    Serial.println("connected:" + WiFi.SSID());
+    Serial.println("IP:" + WiFi.localIP().toString());
+  }
+  else {
+    Serial.println("connection failed:" + String(WiFi.status()));
+    Serial.println("Needs WiFi connection to start publishing messages");
+  }
+
+  WiFiWebServer&  webServer = portal.host();
+  webServer.on("/", handleRoot);
 }
+
+void loop() {
+
+  portal.handleClient();
 }
