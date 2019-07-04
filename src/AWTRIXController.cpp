@@ -22,7 +22,6 @@
 #include <WiFiUdp.h>
 
 // instantiate BME sensor
-
 BME280<> BMESensor;
 
 int tempState = false;	// 0 = None ; 1 = BME280 ; 2 = htu21d
