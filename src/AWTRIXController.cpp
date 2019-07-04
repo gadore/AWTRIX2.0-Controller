@@ -511,7 +511,7 @@ void updateMatrix(byte payload[],int length){
 		}
 		case 12:{
 			//Command 12: GetMatrixInfo
-			StaticJsonBuffer<200> jsonBuffer;
+			StaticJsonBuffer<400> jsonBuffer;
 			JsonObject& root = jsonBuffer.createObject();
 			root["type"] = "MatrixInfo";
 			root["version"] = version;
@@ -691,11 +691,12 @@ void setup(){
 	}
 
 
-	Serial.printf("\nLoading from SPIFFS:\nAwtrix Server: %s \n: ",awtrix_server);
+	Serial.println("Loading from SPIFFS:");
+	Serial.println(awtrix_server);
 	if(usbWifiState){
-		Serial.println("Connection: true");
+		Serial.println("Connection: USB");
 	} else {
-		Serial.println("Connection: false");
+		Serial.println("Connection: WiFi");
 	}
 	if(audioState){
 		Serial.println("Audio: true");
@@ -772,6 +773,7 @@ void setup(){
 	//ldrState = 1000;
 
 	//Checking periphery
+	Wire.begin(I2C_SDA,I2C_SCL); 
 	if(tempState==1){
 		bool successfully = BMESensor.begin(); 
 		if(successfully){
@@ -784,7 +786,7 @@ void setup(){
 	} else if(tempState == 2){
 		//htu21d...
 	}
-	Wire.begin(I2C_SDA,I2C_SCL);
+
 	if(audioState){
 		mySoftwareSerial.begin(9600);
 		myMP3.begin(mySoftwareSerial);
@@ -836,7 +838,7 @@ void loop() {
 		incomingPacket[len] = 0;
 		}
 		Serial.println("Got data via UDP!");
-		if (incomingPacket[10]==ID) {
+		if ((int)incomingPacket[10]==ID) {
 
 
 		matrix->clear();
@@ -844,12 +846,12 @@ void loop() {
 		matrix->print("Update");
 		matrix->show();
 
-		usbWifiState=incomingPacket[0];
+		usbWifiState=(int)incomingPacket[0];
 
 		//set sensor type for temperatue...
-		tempState = incomingPacket[1];
-		audioState=incomingPacket[2];
-		gestureState=incomingPacket[3];	
+		tempState = (int)incomingPacket[1];
+		audioState=(int)incomingPacket[2];
+		gestureState=(int)incomingPacket[3];	
 		
 		//set LDR resistor
 		ldrState = int(incomingPacket[4]<<8)+int(incomingPacket[5]);
