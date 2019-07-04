@@ -833,40 +833,35 @@ void loop() {
 		// receive incoming UDP packets
 		Serial.printf("Received %d bytes from %s, port %d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
 		int len = Udp.read(incomingPacket, 255);
-		if (len > 0)
-		{
-		incomingPacket[len] = 0;
+		if (len > 0){
+			incomingPacket[len] = 0;
 		}
+
 		Serial.println("Got data via UDP!");
+
 		if ((int)incomingPacket[10]==ID) {
+			matrix->clear();
+			matrix->setCursor(5, 6);
+			matrix->print("Update");
+			matrix->show();
 
+			usbWifiState=(int)incomingPacket[0];
+			tempState = (int)incomingPacket[1];
+			audioState=(int)incomingPacket[2];
+			gestureState=(int)incomingPacket[3];	
+			ldrState = int(incomingPacket[4]<<8)+int(incomingPacket[5]);
 
-		matrix->clear();
-		matrix->setCursor(5, 6);
-		matrix->print("Update");
-		matrix->show();
+			IPAddress ip = IPAddress(incomingPacket[6],incomingPacket[7],incomingPacket[8],incomingPacket[9]);
+			ip.toString().toCharArray(awtrix_server, 16);
 
-		usbWifiState=(int)incomingPacket[0];
-
-		//set sensor type for temperatue...
-		tempState = (int)incomingPacket[1];
-		audioState=(int)incomingPacket[2];
-		gestureState=(int)incomingPacket[3];	
-		
-		//set LDR resistor
-		ldrState = int(incomingPacket[4]<<8)+int(incomingPacket[5]);
-
-		IPAddress ip = IPAddress(incomingPacket[6],incomingPacket[7],incomingPacket[8],incomingPacket[9]);
-		ip.toString().toCharArray(awtrix_server, 16);
-
-		if(saveConfig()){
-			ESP.reset();
-		} else {
-			Serial.println("[UpdateMatrix-14] Fail to Save the File...");
-		}
+			if(saveConfig()){
+				ESP.reset();
+			} else {
+				Serial.println("[UpdateMatrix-14] Fail to Save the File...");
+			}
 
 		}else{
-			Serial.println("Wrong Matrix ID!");
+			Serial.println("Wrong matrix ID. Ignore...");
 	}
 	}
 
