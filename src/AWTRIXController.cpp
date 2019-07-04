@@ -43,7 +43,7 @@ WiFiManager wifiManager;
 //USP
 WiFiUDP Udp;
 unsigned int localUdpPort = 4210;
-char incomingPacket[255];
+char incomingPacket[20];
 
 //resetdetector
 #define DRD_TIMEOUT 2.0
@@ -60,7 +60,7 @@ byte myBytes[1000];
 unsigned int bufferpointer;
 
 //Zum speichern...
-int cfgStart = 0;
+int cfgStart = 0; 
 
 //flag for saving data
 bool shouldSaveConfig = false;
