@@ -633,15 +633,6 @@ void flashProgress(unsigned int progress, unsigned int total) {
     matrix->show();
 }
 
-bool checkStringForBool(String myString){
-	//check if true
-	if((myString[0]==116)&&(myString[1]==114)&&(myString[2]==117)&&(myString[2]==101)){
-		return true;
-	} else {
-		return false;
-	}
-}
-
 void saveConfigCallback () {
   Serial.println("Should save config");
   shouldSaveConfig = true;
@@ -683,21 +674,15 @@ void setup(){
         	if (json.success()) {
           		Serial.println("\nparsed json");
 				String temporaer = json["awtrix_server"];
-
 				for(int i = 0;i<16;i++){
 					awtrix_server[i] = temporaer[i];
 				}
-
 				usbWifiState=json["connection"].as<int>();
 				audioState = json["audio"].as<int>();
 				gestureState=json["gesture"].as<int>();
 				ID=json["id"].as<int>();
-
-				String ldr = json["ldr"];
-				ldrState = ldr.toInt();
-
-				String temp = json["temp"];
-				tempState = temp.toInt();
+				ldrState= json["ldr"].as<int>();
+				tempState = json["temp"].as<int>();
         	}
         	configFile.close();
       	}
