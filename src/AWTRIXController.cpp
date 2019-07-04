@@ -752,10 +752,7 @@ void setup(){
 	}
 
 		Udp.begin(localUdpPort);
-		
-		
 
-		
 		if(shouldSaveConfig){
 			Serial.println("saving config");
 			saveConfig();
@@ -763,8 +760,6 @@ void setup(){
 		}
 
 		hardwareAnimatedCheck(0,27,2);
-
-	
 
 	//for testing...
 	//tempState = 1;
@@ -821,6 +816,7 @@ void setup(){
 
 	myTime = millis()-500;
 	myCounter = 0;
+	
 	client.setServer(awtrix_server, 7001);
 	client.setCallback(callback);
 }
