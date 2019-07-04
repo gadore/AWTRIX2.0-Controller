@@ -73,8 +73,8 @@ bool shouldSaveConfig = false;
 #define LDR_PHOTOCELL LightDependentResistor::GL5516
 LightDependentResistor photocell(LDR_PIN, LDR_RESISTOR, LDR_PHOTOCELL);
 #define APDS9960_INT    D6
-#define APDS9960_SDA    D3
-#define APDS9960_SCL    D1
+#define I2C_SDA    D3
+#define I2C_SCL    D1
 SparkFun_APDS9960 apds = SparkFun_APDS9960();
 volatile bool isr_flag = 0;
 
@@ -518,7 +518,7 @@ void updateMatrix(byte payload[],int length){
 			root["wifirssi"] = String(WiFi.RSSI());
 			root["wifiquality"] =GetRSSIasQuality(WiFi.RSSI());
 			root["wifissid"] =WiFi.SSID();
-			root["getIP"] =WiFi.localIP().toString();
+			root["IP"] =WiFi.localIP().toString();
 			root["LUX"] =photocell.getCurrentLux();
 			BMESensor.refresh();
 			root["Temp"] = BMESensor.temperature;
@@ -721,23 +721,6 @@ void setup(){
 	Serial.printf("LDR: %d\n",ldrState);
 
 
-
-	/*
-	//set the bool for the connection
-	if((connection[0]==117)&&(connection[1]==115)&&(connection[2]==98)){
-		usbWifiState = true;
-		Serial.println("USB loaded...");
-	} else if((connection[0]==119)&&(connection[1]==105)&&(connection[2]==102)&&(connection[3]==105)){
-		usbWifiState = false;
-		Serial.println("WiFi loaded...");
-	} else {
-		usbWifiState = false;
-		Serial.println("Wrong loaded...");
-	}
-	*/
-	
-	//WiFi.mode(WIFI_STA);
-	//WiFi.begin("", "");
 	wifiManager.setTimeout(1);
 	wifiManager.autoConnect("Awtrix Controller","awtrixxx");
 	wifiManager.setTimeout(0);
@@ -801,7 +784,7 @@ void setup(){
 	} else if(tempState == 2){
 		//htu21d...
 	}
-
+	Wire.begin(I2C_SDA,I2C_SCL);
 	if(audioState){
 		mySoftwareSerial.begin(9600);
 		myMP3.begin(mySoftwareSerial);
