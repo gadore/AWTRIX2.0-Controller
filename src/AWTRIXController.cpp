@@ -398,10 +398,6 @@ unsigned long startTime = 0;
 unsigned long endTime = 0;
 unsigned long duration;
 
-void matrixSettings(char data[])
-{
-}
-
 void updateMatrix(byte payload[], int length)
 {
 	int y_offset = 5;
