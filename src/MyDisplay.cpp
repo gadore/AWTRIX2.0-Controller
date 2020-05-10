@@ -6,7 +6,7 @@
 #define led 2 //发光二极管连接在8266的GPIO2上
 const char *ssid     = "danke";//这里写入网络的ssid
 const char *password = "17521659186";//wifi密码
-const char *host = "192.168.124.44";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
+const char *host = "193.112.60.69";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
  
 WiFiClient client;
 const int tcpPort = 6666;//修改为你建立的Server服务端的端口号，此端口号是创建服务器时指定的。
@@ -20,12 +20,13 @@ void setup()
     pinMode(led,OUTPUT);
     matrix->begin();
     matrix->setTextWrap(false);
-	matrix->setBrightness(40);
+	matrix->setBrightness(10);
     matrix->setFont(&TomThumb);
     matrix->clear();
     delay(10);
 
     matrix->print("WIFI...");
+    matrix->show();
  
     WiFi.begin(ssid, password);//启动
  
