@@ -263,6 +263,12 @@
 // #else
 // void processing(String cmd)
 // {
+//     matrix->clear();
+//     matrix->setCursor(0, 6);
+//     matrix->setTextColor(matrix->Color(255,0,0));
+//     matrix->print("Process");
+//     matrix->show();
+
 // 	DynamicJsonBuffer jsonBuffer;
 // 	JsonObject &json = jsonBuffer.parseObject(cmd);
 // 	String type = json["type"];
