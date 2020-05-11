@@ -4,9 +4,22 @@
 #include <ArduinoJson.h>
  
 #define led 2 //发光二极管连接在8266的GPIO2上
-const char *ssid     = "danke";//这里写入网络的ssid
-const char *password = "17521659186";//wifi密码
-const char *host = "193.112.60.69";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
+const char *ssid     = "gadore";//这里写入网络的ssid
+const char *password = "yuanyu233";
+// const char *password = "17521659186";//wifi密码
+// const char *host = "193.112.60.69";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
+const char *host = "192.168.123.193";
+
+struct WifiConfig{
+    String name;
+    String pwd;
+    String host;
+};
+
+struct WifiConfig wifis[2] = {{"gadore","yuanyu233","192.168.123.193"},{"danke","17521659186","192.168.124.44"}};
+
+String wifiConfig1[2] = {"gadore","yuanyu233"};
+String wifiConfig2[2] = {"danke","17521659186"};
  
 WiFiClient client;
 const int tcpPort = 6666;//修改为你建立的Server服务端的端口号，此端口号是创建服务器时指定的。
