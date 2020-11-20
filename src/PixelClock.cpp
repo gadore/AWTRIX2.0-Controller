@@ -2,21 +2,19 @@
 // #include <FastLED_NeoMatrix.h>
 // #include <Fonts/TomThumb.h>
 // #include <ArduinoJson.h>
-// #include <WebSocketClient.h>
+// #include <WebSocketClient.cpp>
  
 // #define led 2 //发光二极管连接在8266的GPIO2上
 // const char *ssid     = "Wms-Test-AP";//这里写入网络的ssid
 // const char *password = "simba-server";
-// // const char *password = "17521659186";//wifi密码
-// // const char *host = "193.112.60.69";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
-// char *host = "192.168.3.209";
+// const char *host = "192.168.3.209";
 
 // struct WifiConfig{
 //     String name;
 //     String pwd;
 //     String host;
 // };
-
+ 
 // WiFiClient client;
 // const int tcpPort = 6666;//修改为你建立的Server服务端的端口号，此端口号是创建服务器时指定的。
 // CRGB leds[256];
@@ -38,7 +36,7 @@
 //     matrix->show();
  
 //     WiFi.begin(ssid, password);//启动
-
+ 
 //      //在这里检测是否成功连接到目标网络，未连接则阻塞。
 //     while (WiFi.status() != WL_CONNECTED)
 //     {
@@ -76,7 +74,7 @@
 
 // void loop()
 // {
-//     while (!client.available())//若未连接到服务端，则客户端进行连接。
+//     while (!client.connected())//若未连接到服务端，则客户端进行连接。
 //     {
 //         if (!client.connect(host, tcpPort))//实际上这一步就在连接服务端，如果连接上，该函数返回true
 //         {
@@ -97,10 +95,9 @@
 //             matrix->setTextColor(matrix->Color(255, 255, 255));
 //             matrix->print("Linked!");
 //             matrix->show();
-//             delay(100);
 //         }
 //     }
-
+ 
 //     while (client.available())//available()表示是否可以获取到数据
 //     {
 //         client.setTimeout(20);
@@ -172,33 +169,5 @@
 //         {
 //             matrix->setBrightness(json["brightness"].as<int16_t>());
 //         }
-//         //     else if (type.equals("play"))
-//         // {
-//         //     myMP3.volume(json["vol"].as<int8>());
-//         //     delay(20);
-//         //     myMP3.playFolder(json["folder"].as<int8>(),json["file"].as<int8>());
-//         // }
-//         // else if (type.equals("getMatrixInfo"))
-//         // {
-//         //     StaticJsonBuffer<200> jsonBuffer;
-//         //     JsonObject& root = jsonBuffer.createObject();
-//         //     root["version"] = version;
-//         //     root["wifirssi"] = String(WiFi.RSSI());
-//         //     root["wifiquality"] =GetRSSIasQuality(WiFi.RSSI());
-//         //     root["wifissid"] =WiFi.SSID();
-//         //     root["getIP"] =WiFi.localIP().toString();
-//         //     String JS;
-//         //     root.printTo(JS);
-//         //     Serial.println(String(JS));
-//         // }
-//         // else if (type.equals("getLUX"))
-//         // {
-//         //     StaticJsonBuffer<200> jsonBuffer;
-//         //     JsonObject& root = jsonBuffer.createObject();
-//         //     root["LUX"] = photocell.getCurrentLux();
-//         //     String JS;
-//         //     root.printTo(JS);
-//         //     Serial.println(String(JS));
-//         // }
 //     }
 // }
