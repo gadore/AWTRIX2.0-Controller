@@ -1,9 +1,9 @@
 ///////////////////////// AWTRIX CONFIG /////////////////////////
 
 // Wifi Config
-const char *ssid = "danke";
-const char *password = "17521659186";
-char *awtrix_server = "192.168.124.44";
+const char *ssid = "A12";
+const char *password = "simba-server";
+char *awtrix_server = "192.168.50.121";
 
 //#define USB_CONNECTION
 //#define MATRIX_MODEV2

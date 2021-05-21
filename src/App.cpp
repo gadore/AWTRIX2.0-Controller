@@ -8,9 +8,9 @@
 #include <WiFiManager.h>
 
 #define led 2                     //发光二极管连接在8266的GPIO2上
-const char *ssid = "Wms-Test-AP"; //这里写入网络的ssid
+const char *ssid = "A12"; //这里写入网络的ssid
 const char *password = "simba-server";
-char *host = "193.112.60.69";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
+char *host = "192.168.50.121";//修改为Server服务端的IP，即你电脑的IP，确保在同一网络之下。
 // char *host = "192.168.3.209";
 const int tcpPort = 10663; //修改为你建立的Server服务端的端口号，此端口号是创建服务器时指定的。
 
@@ -96,10 +96,15 @@ void setup()
     matrix->setFont(&TomThumb);
     delay(10);
 
-    printMsg("WiFiConf");
+    printMsg("WiFi Conf");
 
-    WiFiManager wifiManager;
-    wifiManager.autoConnect("AwtrixWifiConfig");
+    WiFi.begin(ssid, password);//启动
+
+     //在这里检测是否成功连接到目标网络，未连接则阻塞。
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+    }
 
     if (client.connect(host, tcpPort))
     {
@@ -107,7 +112,7 @@ void setup()
     }
     else
     {
-        printMsg("wifiFail");
+        printMsg("wifi Fail");
     }
 
     delay(500);
@@ -120,7 +125,7 @@ void setup()
     }
     else
     {
-        printMsg("webFail");
+        printMsg("web Fail");
         while (1)
         {
             // Hang on failure
